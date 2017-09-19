@@ -53,60 +53,22 @@ public class BitBucketTrigger extends Trigger<Job<?, ?>> {
     public void onPost(String triggeredByUser, final String payload) {
         final String pushBy = triggeredByUser;
         getDescriptor().queue.execute(new Runnable() {
-            private boolean runPolling() {
-                try {
-                    StreamTaskListener listener = new StreamTaskListener(getLogFile());
-                    try {
-                        PrintStream logger = listener.getLogger();
-                        long start = System.currentTimeMillis();
-                        logger.println("Started on "+ DateFormat.getDateTimeInstance().format(new Date()));
-                        boolean result = SCMTriggerItem.SCMTriggerItems.asSCMTriggerItem(job).poll(listener).hasChanges();
-                        logger.println("Done. Took "+ Util.getTimeSpanString(System.currentTimeMillis()-start));
-                        if(result)
-                            logger.println("Changes found");
-                        else
-                            logger.println("No changes");
-                        return result;
-                    } catch (Error e) {
-                        e.printStackTrace(listener.error("Failed to record SCM polling"));
-                        LOGGER.log(Level.SEVERE,"Failed to record SCM polling",e);
-                        throw e;
-                    } catch (RuntimeException e) {
-                        e.printStackTrace(listener.error("Failed to record SCM polling"));
-                        LOGGER.log(Level.SEVERE,"Failed to record SCM polling",e);
-                        throw e;
-                    } finally {
-                        listener.close();
-                    }
-                } catch (IOException e) {
-                    LOGGER.log(Level.SEVERE,"Failed to record SCM polling",e);
-                }
-                return false;
-            }
-
             public void run() {
-                if (runPolling()) {
-                    String name = " #"+job.getNextBuildNumber();
-                    BitBucketPushCause cause;
-                    try {
-                        cause = new BitBucketPushCause(getLogFile(), pushBy);
-                    } catch (IOException e) {
-                        LOGGER.log(Level.WARNING, "Failed to parse the polling log",e);
-                        cause = new BitBucketPushCause(pushBy);
-                    }
-                    ParameterizedJobMixIn pJob = new ParameterizedJobMixIn() {
-                        @Override protected Job asJob() {
-                            return job;
-                        }
-                    };
-                    BitBucketPayload bitBucketPayload = new BitBucketPayload(payload);
-                    pJob.scheduleBuild2(5, new CauseAction(cause), bitBucketPayload);
-                    if (pJob.scheduleBuild(cause)) {
-                        LOGGER.info("SCM changes detected in "+ job.getName()+". Triggering "+ name);
-                    } else {
-                        LOGGER.info("SCM changes detected in "+ job.getName()+". Job is already in the queue");
-                    }
+                String name = " #"+job.getNextBuildNumber();
+                BitBucketPushCause cause;
+                try {
+                    cause = new BitBucketPushCause(getLogFile(), pushBy);
+                } catch (IOException e) {
+                    LOGGER.log(Level.WARNING, "Failed to parse the polling log",e);
+                    cause = new BitBucketPushCause(pushBy);
                 }
+                ParameterizedJobMixIn pJob = new ParameterizedJobMixIn() {
+                    @Override protected Job asJob() {
+                        return job;
+                    }
+                };
+                BitBucketPayload bitBucketPayload = new BitBucketPayload(payload);
+                pJob.scheduleBuild2(0, new CauseAction(cause), bitBucketPayload);
             }
 
         });
